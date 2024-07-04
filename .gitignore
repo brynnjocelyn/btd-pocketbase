@@ -1,0 +1,6 @@
+# Ignore the Pocketbase executable
+pocketbase
+# Ignore log files
+*.log
+# Ignore runtime data
+pb_data
