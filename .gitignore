@@ -1,5 +1,7 @@
 # Ignore the Pocketbase executable
 pocketbase
+# Ignore Pocketbase executable backups
+pocketbase-backup-2024-08-02
 # Ignore log files
 *.log
 # Ignore runtime data
