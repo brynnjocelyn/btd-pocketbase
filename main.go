@@ -11,14 +11,17 @@ import (
 )
 
 func main() {
-    app := pocketbase.New()
+	app := pocketbase.New()
 
-    // Register the auth hooks
-    hooks.RegisterAuthHooks(app)
+	// Register the auth hooks
+	hooks.RegisterAuthHooks(app)
 
-    migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{Automigrate: true})
+	// Register the chat hooks
+	hooks.RegisterPreventDuplicateChatCreationHooks(app)
 
-    if err := app.Start(); err != nil {
-        log.Fatal(err)
-    }
+	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{Automigrate: true})
+
+	if err := app.Start(); err != nil {
+		log.Fatal(err)
+	}
 }
