@@ -2,7 +2,7 @@ module btdApi
 
 go 1.22.4
 
-require github.com/pocketbase/pocketbase v0.22.18
+require github.com/pocketbase/pocketbase v0.26.1
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect

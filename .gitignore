@@ -6,3 +6,5 @@ pocketbase-backup-2024-08-02
 *.log
 # Ignore runtime data
 pb_data
+
+**/CLAUDE.local.md
