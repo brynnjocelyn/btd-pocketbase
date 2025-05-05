@@ -1,3 +1,5 @@
+/// <reference path="../pb_data/types.d.ts" />
+
 /**
  * Creates a participants key for a chat from user IDs
  * @param {Array} users - Array of user IDs
@@ -19,37 +21,35 @@ function findExistingChat(app, participantsKey) {
     `participantsKey = '${participantsKey}'`,
     null,
     1,
-    0,
+    0
   );
-
+  
   return existingChats.length > 0 ? existingChats[0] : null;
 }
 
-// Hook to prevent duplicate chat creation
+// Hook to prevent duplicate chat creation 
 onRecordCreateRequest((e) => {
   const record = e.record;
   const app = e.app;
-
+  
   // Get or create the participants key
   let participantsKey = record.get("participantsKey");
   if (!participantsKey) {
     const users = record.get("users");
     participantsKey = createParticipantsKey(users);
   }
-
+  
   // Find existing chat with same participants
   const existingChat = findExistingChat(app, participantsKey);
-
+  
   if (existingChat) {
     // Return the existing chat instead of creating a new one
     return e.response(200, { chat: existingChat });
   }
-
+  
   // No existing chat found, continue with creation
   e.next();
 }, "chats");
-
-// Import shared utility functions from messages.pb.js
 
 // Filter inactive chats from list results for non-superusers
 onRecordsListRequest((e) => {
@@ -58,109 +58,47 @@ onRecordsListRequest((e) => {
     e.next();
     return;
   }
-
-  console.log(
-    "DEBUG: Chats - Before filtering - Total chats:",
-    e.result?.items?.length || 0,
-  );
+  
+  // Import the utility functions
+  const utils = require(`${__hooks}/messageUtils.js`);
+  
+  console.log("DEBUG: Chats - Before filtering - Total chats:", e.result?.items?.length || 0);
   if (e.result?.items?.length > 0) {
-    console.log(
-      "DEBUG: Chats - First chat isActive value:",
-      e.result.items[0].get("isActive"),
-    );
-    console.log(
-      "DEBUG: Chats - First chat fields:",
-      JSON.stringify(e.result.items[0], null, 2),
-    );
+    console.log("DEBUG: Chats - First chat isActive value:", e.result.items[0].get("isActive"));
+    console.log("DEBUG: Chats - First chat fields:", JSON.stringify(e.result.items[0].data, null, 2));
   }
-
-  // Filter records using the same logic as messages.pb.js
-  const results = e.result;
-  if (results && results.items) {
-    // Build a new array with only the active records
-    const filteredItems = [];
-
-    for (let i = 0; i < results.items.length; i++) {
-      const chat = results.items[i];
-      const isActive = chat.get("isActive");
-
-      console.log(
-        `DEBUG: Chats - Record ${i} - id: ${chat.id}, isActive:`,
-        isActive,
-        `(type: ${typeof isActive}, excluded: ${isActive === false})`,
-      );
-
-      // Skip records that are explicitly set to false
-      // Keep all other records (true, undefined, null, etc.)
-      if (isActive !== false) {
-        filteredItems.push(chat);
-      } else {
-        console.log(
-          `DEBUG: Chats - Excluding chat ${chat.id} because isActive is explicitly false`,
-        );
-      }
-    }
-
-    // Update the result
-    e.result.items = filteredItems;
-    e.result.totalItems = filteredItems.length;
-
-    console.log(
-      "DEBUG: Chats - After filtering - Total chats:",
-      filteredItems.length,
-    );
-    if (filteredItems.length > 0) {
-      console.log(
-        "DEBUG: Chats - Sample chat after filtering:",
-        JSON.stringify(filteredItems[0], null, 2),
-      );
-      console.log(
-        "DEBUG: Chats - Request filter:",
-        JSON.stringify(e.requestInfo().query, null, 2),
-      );
-    } else {
-      console.log("DEBUG: Chats - No chats passed filtering");
-    }
+  
+  // Use the same filtering logic as messages
+  utils.filterActiveRecords(e.result);
+  
+  console.log("DEBUG: Chats - After filtering - Total chats:", e.result?.items?.length || 0);
+  if (e.result?.items?.length > 0) {
+    console.log("DEBUG: Chats - Sample chat after filtering:", JSON.stringify(e.result.items[0].data, null, 2));
+    console.log("DEBUG: Chats - Request filter:", JSON.stringify(e.requestInfo().query, null, 2));
+  } else {
+    console.log("DEBUG: Chats - No chats passed filtering");
   }
+  
   e.next();
 }, "chats");
 
 // Prevent viewing inactive chats for non-superusers
 onRecordViewRequest((e) => {
   if (e.hasSuperuserAuth()) {
-    console.log(
-      "DEBUG: Chats View - Superuser detected, allowing view of chat:",
-      e.record.id,
-    );
+    console.log("DEBUG: Chats View - Superuser detected, allowing view of chat:", e.record.id);
     e.next();
     return;
   }
-
+  
+  // Import the utility functions
+  const utils = require(`${__hooks}/messageUtils.js`);
+  
   console.log("DEBUG: Chats View - Checking if chat is active:", e.record.id);
-  console.log(
-    "DEBUG: Chats View - isActive value:",
-    e.record.get("isActive"),
-    "type:",
-    typeof e.record.get("isActive"),
-  );
-  console.log(
-    "DEBUG: Chats View - Chat fields:",
-    JSON.stringify(e.record.data, null, 2),
-  );
-
-  // Only return 404 if isActive is explicitly set to false
-  // If isActive doesn't exist or is null/undefined, treat as active
-  const isActive = e.record.get("isActive");
-
-  if (isActive === false) {
-    console.log(
-      `DEBUG: Chats View - Blocking access to chat ${e.record.id} (isActive is false)`,
-    );
-    e.error(404, "Chat has previously been deleted");
-  } else {
-    console.log(`DEBUG: Chats View - Allowing access to chat ${e.record.id}`);
-    e.next();
-  }
+  console.log("DEBUG: Chats View - isActive value:", e.record.get("isActive"), "type:", typeof e.record.get("isActive"));
+  console.log("DEBUG: Chats View - Chat fields:", JSON.stringify(e.record.data, null, 2));
+  
+  // Use ensureRecordIsActive from utils
+  utils.ensureRecordIsActive(e, "Chat");
 }, "chats");
 
 /**
@@ -171,39 +109,29 @@ onRecordViewRequest((e) => {
 function isChatBeingDeactivated(chat) {
   // Handle cases where isActive might be undefined
   const currentIsActive = chat.get("isActive");
-  console.log(
-    `DEBUG: isChatBeingDeactivated - Current isActive: ${currentIsActive}, type: ${typeof currentIsActive}`,
-  );
-
+  console.log(`DEBUG: isChatBeingDeactivated - Current isActive: ${currentIsActive}, type: ${typeof currentIsActive}`);
+  
   // Get the original copy - handle case where it might not exist
   const originalCopy = chat.originalCopy();
   if (!originalCopy) {
-    console.log(
-      `DEBUG: isChatBeingDeactivated - No original copy found, not a deactivation`,
-    );
+    console.log(`DEBUG: isChatBeingDeactivated - No original copy found, not a deactivation`);
     return false;
   }
-
+  
   const originalIsActive = originalCopy.get("isActive");
-  console.log(
-    `DEBUG: isChatBeingDeactivated - Original isActive: ${originalIsActive}, type: ${typeof originalIsActive}`,
-  );
-
+  console.log(`DEBUG: isChatBeingDeactivated - Original isActive: ${originalIsActive}, type: ${typeof originalIsActive}`);
+  
   // Only consider truly deactivated when going from explicitly true to explicitly false
   const isDeactivated = currentIsActive === false && originalIsActive === true;
-  console.log(
-    `DEBUG: isChatBeingDeactivated - Is being deactivated: ${isDeactivated}`,
-  );
-  console.log(
-    `DEBUG: isChatBeingDeactivated - Condition: currentIsActive === false (${currentIsActive === false}) && originalIsActive === true (${originalIsActive === true})`,
-  );
-
+  console.log(`DEBUG: isChatBeingDeactivated - Is being deactivated: ${isDeactivated}`);
+  console.log(`DEBUG: isChatBeingDeactivated - Condition: currentIsActive === false (${currentIsActive === false}) && originalIsActive === true (${originalIsActive === true})`);
+  
   return isDeactivated;
 }
 
 /**
  * Deactivates all active messages in a chat
- * @param {Object} txApp - Transaction app instance
+ * @param {Object} txApp - Transaction app instance 
  * @param {string} chatId - ID of the chat
  */
 function deactivateMessages(txApp, chatId) {
@@ -211,97 +139,71 @@ function deactivateMessages(txApp, chatId) {
     console.log("WARNING: Cannot deactivate messages - no chat ID provided");
     return;
   }
-
-  console.log(
-    `DEBUG: deactivateMessages - Starting deactivation for chat: ${chatId}`,
-  );
-
+  
+  console.log(`DEBUG: deactivateMessages - Starting deactivation for chat: ${chatId}`);
+  
   try {
     // Find all active messages for this chat (either active or where isActive is not set)
     // First try with messages that have isActive=true
     const filter1 = `chatId = '${chatId}' && isActive = true`;
-    console.log(
-      `DEBUG: deactivateMessages - Looking for messages with filter: ${filter1}`,
-    );
-
+    console.log(`DEBUG: deactivateMessages - Looking for messages with filter: ${filter1}`);
+    
     let messages = txApp.findRecordsByFilter(
       "messages",
       filter1,
       null,
       0, // No limit (fetch all)
-      0,
+      0
     );
-
-    console.log(
-      `DEBUG: deactivateMessages - Found ${messages.length} messages with isActive = true`,
-    );
-
+    
+    console.log(`DEBUG: deactivateMessages - Found ${messages.length} messages with isActive = true`);
+    
     // Add messages that don't have isActive set at all
     const filter2 = `chatId = '${chatId}' && isActive = ''`;
-    console.log(
-      `DEBUG: deactivateMessages - Looking for messages with filter: ${filter2}`,
-    );
-
+    console.log(`DEBUG: deactivateMessages - Looking for messages with filter: ${filter2}`);
+    
     const messagesWithNoIsActive = txApp.findRecordsByFilter(
       "messages",
-      filter2, // Simpler way to find records without the field set
+      filter2,  // Simpler way to find records without the field set
       null,
       0,
-      0,
+      0
     );
-
-    console.log(
-      `DEBUG: deactivateMessages - Found ${messagesWithNoIsActive.length} messages with no isActive value`,
-    );
-
+    
+    console.log(`DEBUG: deactivateMessages - Found ${messagesWithNoIsActive.length} messages with no isActive value`);
+    
     // Combine the results
     if (messagesWithNoIsActive && messagesWithNoIsActive.length > 0) {
       messages = messages.concat(messagesWithNoIsActive);
-      console.log(
-        `DEBUG: deactivateMessages - Combined total messages to deactivate: ${messages.length}`,
-      );
+      console.log(`DEBUG: deactivateMessages - Combined total messages to deactivate: ${messages.length}`);
     }
-
+    
     if (!messages || messages.length === 0) {
-      console.log(
-        `DEBUG: deactivateMessages - No messages found to deactivate for chat: ${chatId}`,
-      );
+      console.log(`DEBUG: deactivateMessages - No messages found to deactivate for chat: ${chatId}`);
       return; // No messages to update
     }
-
+    
     // Deactivate each message
     let updatedCount = 0;
     messages.forEach((message, index) => {
       try {
-        console.log(
-          `DEBUG: deactivateMessages - Deactivating message ${index + 1}/${messages.length}: ${message.id}`,
-        );
-        console.log(
-          `DEBUG: deactivateMessages - Previous isActive value: ${message.get("isActive")}`,
-        );
-
+        console.log(`DEBUG: deactivateMessages - Deactivating message ${index+1}/${messages.length}: ${message.id}`);
+        console.log(`DEBUG: deactivateMessages - Previous isActive value: ${message.get("isActive")}`);
+        
         message.set("isActive", false);
         txApp.save(message);
         updatedCount++;
-
-        console.log(
-          `DEBUG: deactivateMessages - Successfully deactivated message: ${message.id}`,
-        );
+        
+        console.log(`DEBUG: deactivateMessages - Successfully deactivated message: ${message.id}`);
       } catch (err) {
-        console.log(
-          `DEBUG: deactivateMessages - Error deactivating message ${message.id}: ${err.message}`,
-        );
+        console.log(`DEBUG: deactivateMessages - Error deactivating message ${message.id}: ${err.message}`);
         // Continue with other messages even if one fails
       }
     });
-
-    console.log(
-      `DEBUG: deactivateMessages - Successfully deactivated ${updatedCount}/${messages.length} messages`,
-    );
+    
+    console.log(`DEBUG: deactivateMessages - Successfully deactivated ${updatedCount}/${messages.length} messages`);
   } catch (err) {
-    console.log(
-      `DEBUG: deactivateMessages - Error in deactivation process: ${err.message}`,
-    );
+    console.log(`DEBUG: deactivateMessages - Error in deactivation process: ${err.message}`);
     // Catch any errors but continue execution
     // This prevents a failed message deactivation from breaking the whole transaction
   }
@@ -309,34 +211,24 @@ function deactivateMessages(txApp, chatId) {
 
 // Hook to handle chat deactivation and cascading updates
 onRecordUpdateRequest((e) => {
-  console.log(
-    `DEBUG: Chat Update - Processing update for chat: ${e.record.id}`,
-  );
-
+  console.log(`DEBUG: Chat Update - Processing update for chat: ${e.record.id}`);
+  
   const chat = e.record;
   const isBeingDeactivated = isChatBeingDeactivated(chat);
-
-  console.log(
-    `DEBUG: Chat Update - Current isActive: ${chat.get("isActive")}, type: ${typeof chat.get("isActive")}`,
-  );
-  console.log(
-    `DEBUG: Chat Update - Is being deactivated: ${isBeingDeactivated}`,
-  );
-
+  
+  console.log(`DEBUG: Chat Update - Current isActive: ${chat.get("isActive")}, type: ${typeof chat.get("isActive")}`);
+  console.log(`DEBUG: Chat Update - Is being deactivated: ${isBeingDeactivated}`);
+  
   $app.runInTransaction((txApp) => {
     // Check if the chat is being deactivated
     if (isBeingDeactivated) {
-      console.log(
-        `DEBUG: Chat Update - Deactivating all messages for chat: ${chat.id}`,
-      );
+      console.log(`DEBUG: Chat Update - Deactivating all messages for chat: ${chat.id}`);
       // Deactivate all messages in this chat
       deactivateMessages(txApp, chat.id);
     }
   });
-
+  
   // Allow the update to proceed
-  console.log(
-    `DEBUG: Chat Update - Completing update for chat: ${e.record.id}`,
-  );
+  console.log(`DEBUG: Chat Update - Completing update for chat: ${e.record.id}`);
   e.next();
 }, "chats");
