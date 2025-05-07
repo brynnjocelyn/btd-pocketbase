@@ -111,14 +111,14 @@ function isChatBeingDeactivated(chat) {
   const currentIsActive = chat.get("isActive");
   console.log(`DEBUG: isChatBeingDeactivated - Current isActive: ${currentIsActive}, type: ${typeof currentIsActive}`);
   
-  // Get the original copy - handle case where it might not exist
-  const originalCopy = chat.originalCopy();
-  if (!originalCopy) {
-    console.log(`DEBUG: isChatBeingDeactivated - No original copy found, not a deactivation`);
+  // Get the original record - handle case where it might not exist
+  const originalRecord = chat.original();
+  if (!originalRecord) {
+    console.log(`DEBUG: isChatBeingDeactivated - No original record found, not a deactivation`);
     return false;
   }
   
-  const originalIsActive = originalCopy.get("isActive");
+  const originalIsActive = originalRecord.get("isActive");
   console.log(`DEBUG: isChatBeingDeactivated - Original isActive: ${originalIsActive}, type: ${typeof originalIsActive}`);
   
   // Only consider truly deactivated when going from explicitly true to explicitly false

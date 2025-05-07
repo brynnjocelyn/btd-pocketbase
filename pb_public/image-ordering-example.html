@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Ordering Example</title>
+  <script src="https://cdn.jsdelivr.net/npm/pocketbase@latest/dist/pocketbase.umd.min.js"></script>
+  <script src="js/image-order-utils.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .image-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    .image-item {
+      position: relative;
+      cursor: grab;
+      border: 2px solid #ccc;
+      border-radius: 4px;
+      overflow: hidden;
+      width: 150px;
+      height: 150px;
+    }
+    
+    .image-item.dragging {
+      opacity: 0.5;
+      border-color: #007bff;
+    }
+    
+    .image-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .image-item .order-badge {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      background-color: rgba(0, 0, 0, 0.7);
+      color: white;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    
+    button {
+      padding: 10px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    button:hover {
+      background-color: #0056b3;
+    }
+    
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    .status {
+      margin: 20px 0;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    
+    .login-form {
+      margin-bottom: 20px;
+    }
+    
+    .login-form input {
+      padding: 8px;
+      margin-right: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Image Ordering Example</h1>
+  
+  <div class="login-form">
+    <h2>Login</h2>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+    <button id="login-btn">Login</button>
+  </div>
+  
+  <div id="user-info" style="display: none;">
+    <h2>User Info</h2>
+    <p>Logged in as: <span id="user-email"></span></p>
+    <button id="logout-btn">Logout</button>
+  </div>
+  
+  <div id="images-section" style="display: none;">
+    <h2>Your Images</h2>
+    <p>Drag and drop images to reorder them</p>
+    
+    <div class="image-container" id="image-container"></div>
+    
+    <button id="save-order-btn" disabled>Save New Order</button>
+    
+    <div id="status" class="status" style="display: none;"></div>
+  </div>
+  
+  <script>
+    // Initialize PocketBase
+    const pb = new PocketBase(window.location.origin);
+    
+    // Elements
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const userInfo = document.getElementById('user-info');
+    const userEmail = document.getElementById('user-email');
+    const imagesSection = document.getElementById('images-section');
+    const imageContainer = document.getElementById('image-container');
+    const saveOrderBtn = document.getElementById('save-order-btn');
+    const statusDiv = document.getElementById('status');
+    
+    // Variables to track state
+    let currentUser = null;
+    let images = [];
+    let imageOrder = [];
+    let hasChanges = false;
+    
+    // Event Listeners
+    loginBtn.addEventListener('click', handleLogin);
+    logoutBtn.addEventListener('click', handleLogout);
+    saveOrderBtn.addEventListener('click', saveImageOrder);
+    
+    // Check if already logged in
+    if (pb.authStore.isValid) {
+      currentUser = pb.authStore.model;
+      showLoggedInUI();
+      loadUserImages();
+    }
+    
+    // Functions
+    async function handleLogin() {
+      try {
+        const email = emailInput.value;
+        const password = passwordInput.value;
+        
+        if (!email || !password) {
+          showStatus('Please enter both email and password', 'error');
+          return;
+        }
+        
+        const authData = await pb.collection('users').authWithPassword(email, password);
+        currentUser = authData.record;
+        
+        showLoggedInUI();
+        loadUserImages();
+      } catch (error) {
+        showStatus(`Login failed: ${error.message}`, 'error');
+      }
+    }
+    
+    function handleLogout() {
+      pb.authStore.clear();
+      currentUser = null;
+      
+      // Reset UI
+      userInfo.style.display = 'none';
+      imagesSection.style.display = 'none';
+      document.querySelector('.login-form').style.display = 'block';
+      emailInput.value = '';
+      passwordInput.value = '';
+      statusDiv.style.display = 'none';
+    }
+    
+    function showLoggedInUI() {
+      document.querySelector('.login-form').style.display = 'none';
+      userInfo.style.display = 'block';
+      imagesSection.style.display = 'block';
+      userEmail.textContent = currentUser.email;
+    }
+    
+    async function loadUserImages() {
+      try {
+        // Get the ordered images
+        images = await getOrderedImages(pb, currentUser.id, 'avatar');
+        
+        // If we have images, get their current order
+        if (images.length > 0) {
+          // Refresh user data to get the latest imageOrder
+          const userData = await pb.collection('users').getOne(currentUser.id, {
+            fields: 'imageOrder'
+          });
+          
+          imageOrder = userData.imageOrder || [...images];
+          
+          // Render the images
+          renderImages();
+        } else {
+          imageContainer.innerHTML = '<p>No images found. Upload some images first.</p>';
+          saveOrderBtn.disabled = true;
+        }
+      } catch (error) {
+        showStatus(`Failed to load images: ${error.message}`, 'error');
+      }
+    }
+    
+    function renderImages() {
+      // Clear the container
+      imageContainer.innerHTML = '';
+      
+      // Create and append image elements
+      imageOrder.forEach((imageName, index) => {
+        // Create image URL
+        const imageUrl = `${pb.baseUrl}/api/files/users/${currentUser.id}/${imageName}`;
+        
+        const imageItem = document.createElement('div');
+        imageItem.className = 'image-item';
+        imageItem.draggable = true;
+        imageItem.setAttribute('data-image', imageName);
+        
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = `Image ${index + 1}`;
+        
+        const orderBadge = document.createElement('div');
+        orderBadge.className = 'order-badge';
+        orderBadge.textContent = index + 1;
+        
+        imageItem.appendChild(img);
+        imageItem.appendChild(orderBadge);
+        imageContainer.appendChild(imageItem);
+        
+        // Add drag and drop event listeners
+        imageItem.addEventListener('dragstart', handleDragStart);
+        imageItem.addEventListener('dragover', handleDragOver);
+        imageItem.addEventListener('dragleave', handleDragLeave);
+        imageItem.addEventListener('drop', handleDrop);
+        imageItem.addEventListener('dragend', handleDragEnd);
+      });
+      
+      // Enable/disable save button based on changes
+      saveOrderBtn.disabled = !hasChanges;
+    }
+    
+    // Drag and drop handlers
+    let draggedItem = null;
+    
+    function handleDragStart(e) {
+      draggedItem = this;
+      setTimeout(() => {
+        this.classList.add('dragging');
+      }, 0);
+      
+      // Set the data transfer
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', this.getAttribute('data-image'));
+    }
+    
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      this.classList.add('drag-over');
+    }
+    
+    function handleDragLeave(e) {
+      this.classList.remove('drag-over');
+    }
+    
+    function handleDrop(e) {
+      e.preventDefault();
+      this.classList.remove('drag-over');
+      
+      if (draggedItem === this) return;
+      
+      // Get the positions
+      const draggedImage = draggedItem.getAttribute('data-image');
+      const targetImage = this.getAttribute('data-image');
+      
+      const draggedIndex = imageOrder.indexOf(draggedImage);
+      const targetIndex = imageOrder.indexOf(targetImage);
+      
+      // Reorder the array
+      imageOrder.splice(draggedIndex, 1);
+      imageOrder.splice(targetIndex, 0, draggedImage);
+      
+      // Mark that we have changes
+      hasChanges = true;
+      
+      // Re-render the images
+      renderImages();
+    }
+    
+    function handleDragEnd(e) {
+      this.classList.remove('dragging');
+    }
+    
+    async function saveImageOrder() {
+      try {
+        saveOrderBtn.disabled = true;
+        
+        // Update the order on the server
+        await updateImageOrder(pb, currentUser.id, imageOrder);
+        
+        // Reset changes flag
+        hasChanges = false;
+        saveOrderBtn.disabled = true;
+        
+        showStatus('Image order saved successfully!', 'success');
+      } catch (error) {
+        showStatus(`Failed to save order: ${error.message}`, 'error');
+        saveOrderBtn.disabled = false;
+      }
+    }
+    
+    function showStatus(message, type) {
+      statusDiv.textContent = message;
+      statusDiv.className = `status ${type}`;
+      statusDiv.style.display = 'block';
+      
+      // Hide after 5 seconds
+      setTimeout(() => {
+        statusDiv.style.display = 'none';
+      }, 5000);
+    }
+  </script>
+</body>
+</html>
