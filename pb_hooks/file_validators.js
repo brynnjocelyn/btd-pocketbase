@@ -92,6 +92,21 @@ function validateAndHandleImageUpload(e, fieldName = "image") {
       `DEBUG: Validating ${fieldName} upload - ID:${e.record?.id || "new"} Collection:${e.record?.collection().name || "unknown"}`,
     );
 
+    // Check content type first to ensure we only process multipart/form-data requests
+    const requestInfo = e.requestInfo();
+    const contentType = requestInfo.headers["content_type"] || "";
+
+    if (!contentType.includes("form-data")) {
+      console.log(
+        `DEBUG (file_validators): Content type is not multipart/form-data (${contentType}), skipping file validation`,
+      );
+      return true;
+    }
+
+    console.log(
+      `DEBUG: Content type is multipart/form-data, proceeding with file validation`,
+    );
+
     // Get files from the request
     const files = e.findUploadedFiles(fieldName);
 
@@ -162,10 +177,9 @@ function validateAndHandleImageUpload(e, fieldName = "image") {
 }
 
 // Export functions using CommonJS module pattern
-// This is the official documented way to share code between hooks
 module.exports = {
   validateImageFile: validateImageFile,
   validateAndHandleImageUpload: validateAndHandleImageUpload,
   MAX_FILE_SIZE: MAX_FILE_SIZE,
-  ALLOWED_IMAGE_TYPES: ALLOWED_IMAGE_TYPES,
+  ALLOWED_IMAGE_TYPES: ALLOWED_IMAGE_TYPES
 };

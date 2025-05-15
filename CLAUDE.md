@@ -20,3 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Logging**: Use `log` package for Go hooks, `console.log` for JS hooks
 - **Comments**: Document all exported functions and complex logic
 - **Transactions**: Wrap multiple operations in transactions when appropriate
+
+## PocketBase-Specific Patterns
+- **Data Filtering**: For collection-wide filtering (like excluding inactive records), use Collection Rules instead of post-processing in hooks. Example rule: `isActive != false`
+- **Record Visibility**: Use API Rules to control record access rather than manual filtering in `onRecordsListRequest` hooks
+- **Pagination**: Don't attempt to modify pagination query parameters in hooks, as they're applied before hooks execute
+- **Database-Level Filters**: Collection rules (listRule, viewRule) are applied at the database level, improving performance and ensuring correct pagination
